@@ -28,6 +28,8 @@ final class MenuBarController: NSObject {
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
     private var lastObservedToggleSection: ToggleSection?
+    /// Only for logging each change of state once, not every time the look is applied.
+    private var lastAppliedState: HiddenSectionState?
     private let menu: NSMenu
     /// What the menu's Settings… item does; the window lives outside the menu bar glue.
     var onOpenSettings: (() -> Void)?
@@ -65,6 +67,10 @@ final class MenuBarController: NSObject {
 
     private func apply() {
         let look = bouncer.look
+        if look.state != lastAppliedState {
+            Self.log.info("Hidden Section \(look.state == .collapsed ? "Collapsed" : "Revealed", privacy: .public)")
+            lastAppliedState = look.state
+        }
         growSegmentPool(to: look.dividerSegmentLengths.count)
         for (index, segment) in segments.enumerated() {
             // Segments grown past the pool for a display mix that has since gone stay at
