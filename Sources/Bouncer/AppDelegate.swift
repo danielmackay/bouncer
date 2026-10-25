@@ -29,8 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Covers every way out (the menu's Quit, logout, a kill from Activity Monitor
-        // that goes through terminate) so no Menu Bar Item is left in the System Overflow.
-        menuBar?.resetDivider()
+        // Runs for every quit that goes through terminate: the menu's Quit, ⌘Q, logout
+        // and shutdown. A force quit or SIGKILL skips it, but then Bouncer's status items
+        // vanish with the process, taking the Divider's width with them.
+        menuBar?.prepareForQuit()
     }
 }

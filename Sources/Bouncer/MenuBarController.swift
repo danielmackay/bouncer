@@ -52,11 +52,9 @@ final class MenuBarController: NSObject {
         pollPointerAndTime()
     }
 
-    /// Shrinks every segment to zero so quitting never strands items in the System Overflow.
-    func resetDivider() {
-        for segment in segments {
-            segment.length = 0
-        }
+    /// Applies the core's quitting look, so quitting never strands items in the System Overflow.
+    func prepareForQuit() {
+        send(.terminating)
     }
 
     // MARK: - Applying the core's look

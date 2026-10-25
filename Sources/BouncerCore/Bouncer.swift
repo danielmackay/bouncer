@@ -27,6 +27,9 @@ public enum Event: Sendable, Equatable {
     /// Which section the Toggle is in. Sent once the order can be read at launch and
     /// again whenever Bouncer's status items may have moved, such as after a ⌘-drag.
     case toggleSectionObserved(ToggleSection)
+    /// Bouncer is about to quit. Its status items vanish with the process, but a Collapsed
+    /// Divider must shrink first or macOS can leave the Hidden Section in the System Overflow.
+    case terminating
 }
 
 /// What the Toggle's icon shows. The AppKit layer maps each case to a symbol and tooltip.
@@ -56,6 +59,8 @@ public struct Bouncer: Sendable {
     private let clock: any BouncerClock
     private var autoCollapse = AutoCollapseCountdown()
     private var toggleGuard = MisplacedToggleGuard()
+    /// Final: once quitting, nothing may Collapse again before the process exits.
+    private var isTerminating = false
 
     public init(clock: any BouncerClock = SystemClock()) {
         self.clock = clock
@@ -112,13 +117,17 @@ public struct Bouncer: Sendable {
             autoCollapse.timeout = timeout
         case .toggleSectionObserved(let section):
             toggleGuard.toggleSection = section
+        case .terminating:
+            isTerminating = true
+            state = .revealed
+            autoCollapse.disarm()
         }
     }
 
-    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard applies
-    /// to all of them.
+    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard and
+    /// quitting apply to all of them.
     private mutating func collapse() {
-        guard toggleGuard.allowsCollapse else { return }
+        guard !isTerminating, toggleGuard.allowsCollapse else { return }
         state = .collapsed
         autoCollapse.disarm()
     }
