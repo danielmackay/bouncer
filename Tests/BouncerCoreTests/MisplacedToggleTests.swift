@@ -33,7 +33,7 @@ struct MisplacedToggleTests {
 
         bouncer.handle(.toggleSectionObserved(.shown))
 
-        #expect(!bouncer.look.showsToggleWarning)
+        #expect(bouncer.look.toggleIcon != .warning)
     }
 
     @Test("the Toggle warns while it's in the Hidden Section")
@@ -43,7 +43,7 @@ struct MisplacedToggleTests {
 
         bouncer.handle(.toggleSectionObserved(.hidden))
 
-        #expect(bouncer.look.showsToggleWarning)
+        #expect(bouncer.look.toggleIcon == .warning)
     }
 
     @Test("dragging the Toggle back clears the warning and a click Collapses again")
@@ -56,7 +56,7 @@ struct MisplacedToggleTests {
         bouncer.handle(.toggleSectionObserved(.shown))
         bouncer.handle(.toggleClicked)
 
-        #expect(!bouncer.look.showsToggleWarning)
+        #expect(bouncer.look.toggleIcon != .warning)
         #expect(bouncer.look.state == .collapsed)
     }
 

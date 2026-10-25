@@ -86,11 +86,11 @@ final class MenuBarController: NSObject {
             Self.log.error("The Toggle has no button, so its icon can't be updated")
             return
         }
-        let (symbol, description) = switch (look.showsToggleWarning, look.state) {
-        case (true, _):
+        let (symbol, description) = switch look.toggleIcon {
+        case .warning:
             ("exclamationmark.triangle", "Bouncer can't collapse while it's left of the Divider. ⌘-drag it back to the right.")
-        case (false, .collapsed): ("chevron.left", "Reveal hidden menu bar items")
-        case (false, .revealed): ("chevron.right", "Collapse hidden menu bar items")
+        case .collapsed: ("chevron.left", "Reveal hidden menu bar items")
+        case .revealed: ("chevron.right", "Collapse hidden menu bar items")
         }
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         button.toolTip = description

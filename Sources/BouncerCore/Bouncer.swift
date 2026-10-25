@@ -29,6 +29,15 @@ public enum Event: Sendable, Equatable {
     case toggleSectionObserved(ToggleSection)
 }
 
+/// What the Toggle's icon shows. The AppKit layer maps each case to a symbol and tooltip.
+public enum ToggleIcon: Sendable, Equatable {
+    case collapsed
+    case revealed
+    /// The Toggle sits in the Hidden Section, so a click can't Collapse. It replaces the
+    /// state icon in either state: explaining why collapsing isn't working matters more.
+    case warning
+}
+
 /// How the menu bar should look. The AppKit layer applies this verbatim.
 public struct MenuBarLook: Sendable, Equatable {
     public var state: HiddenSectionState
@@ -37,8 +46,7 @@ public struct MenuBarLook: Sendable, Equatable {
     public var dividerSegmentLengths: [Double]
     /// Whether the visible Divider draws its thin line.
     public var isDividerLineVisible: Bool
-    /// Whether the Toggle shows its warning icon because it sits in the Hidden Section.
-    public var showsToggleWarning: Bool
+    public var toggleIcon: ToggleIcon
 }
 
 /// Bouncer's decisions: feed it events, read back the look.
@@ -62,8 +70,13 @@ public struct Bouncer: Sendable {
                 count: sizing.segmentCount
             ),
             isDividerLineVisible: state == .revealed,
-            showsToggleWarning: toggleGuard.showsWarning
+            toggleIcon: toggleIcon
         )
+    }
+
+    private var toggleIcon: ToggleIcon {
+        if toggleGuard.showsWarning { return .warning }
+        return state == .collapsed ? .collapsed : .revealed
     }
 
     public mutating func handle(_ event: Event) {
