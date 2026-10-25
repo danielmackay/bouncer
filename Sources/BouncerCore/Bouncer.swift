@@ -14,6 +14,9 @@ public enum Event: Sendable, Equatable {
     /// Widths in points of every attached display, in any order. Sent at launch and
     /// whenever the screen configuration changes.
     case displayWidthsChanged([Double])
+    /// Which section the Toggle is in. Sent once the order can be read at launch and
+    /// again whenever Bouncer's status items may have moved, such as after a ⌘-drag.
+    case toggleSectionObserved(ToggleSection)
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -30,6 +33,7 @@ public struct MenuBarLook: Sendable, Equatable {
 public struct Bouncer: Sendable {
     private var state: HiddenSectionState = .revealed
     private var displays: DividerSizing?
+    private var toggleGuard = MisplacedToggleGuard()
 
     public init() {}
 
@@ -48,9 +52,13 @@ public struct Bouncer: Sendable {
     public mutating func handle(_ event: Event) {
         switch event {
         case .launchFinished:
-            state = .collapsed
+            collapse()
         case .toggleClicked:
-            state = state == .revealed ? .collapsed : .revealed
+            if state == .revealed {
+                collapse()
+            } else {
+                state = .revealed
+            }
         case .displayWidthsChanged(let widths):
             // Mid-reconfiguration and around sleep, the system can briefly report no
             // screens. Keeping the last real sizing stops a Collapsed Hidden Section
@@ -58,7 +66,16 @@ public struct Bouncer: Sendable {
             if let sizing = DividerSizing(displayWidths: widths) {
                 displays = sizing
             }
+        case .toggleSectionObserved(let section):
+            toggleGuard.toggleSection = section
         }
+    }
+
+    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard applies
+    /// to all of them.
+    private mutating func collapse() {
+        guard toggleGuard.allowsCollapse else { return }
+        state = .collapsed
     }
 }
 
