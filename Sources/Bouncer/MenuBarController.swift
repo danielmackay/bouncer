@@ -6,7 +6,7 @@ import os
 /// it returns; every decision belongs to `Bouncer`.
 @MainActor
 final class MenuBarController: NSObject {
-    private static let log = Logger(subsystem: "dev.danielmackay.Bouncer", category: "MenuBar")
+    private static let log = Logger(bouncerCategory: "MenuBar")
 
     /// Autosave names are how macOS remembers each item's position across launches and
     /// rebuilds. Renaming one makes macOS treat it as a brand-new item.

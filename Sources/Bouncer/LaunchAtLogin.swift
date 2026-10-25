@@ -9,7 +9,7 @@ import os
 @MainActor
 @Observable
 final class LaunchAtLogin {
-    private static let log = Logger(subsystem: "dev.danielmackay.Bouncer", category: "LaunchAtLogin")
+    private static let log = Logger(bouncerCategory: "LaunchAtLogin")
     /// Remembers only that the on-by-default registration has been done once, so turning
     /// launch at login off isn't undone on the next launch. It is not the switch's state.
     private static let defaultAppliedKey = "launchAtLoginDefaultApplied"

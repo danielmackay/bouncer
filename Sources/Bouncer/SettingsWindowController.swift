@@ -7,7 +7,7 @@ import os
 /// opens this instead.
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
-    private static let log = Logger(subsystem: "dev.danielmackay.Bouncer", category: "Settings")
+    private static let log = Logger(bouncerCategory: "Settings")
     private let launchAtLogin: LaunchAtLogin
 
     init(preferences: Preferences, launchAtLogin: LaunchAtLogin) {
