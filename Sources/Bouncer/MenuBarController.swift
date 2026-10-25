@@ -101,6 +101,8 @@ final class MenuBarController: NSObject {
         let (symbol, description) = switch look.toggleIcon {
         case .warning:
             ("exclamationmark.triangle", "Bouncer can't collapse while it's left of the Divider. ⌘-drag it back to the right.")
+        case .segmentsMisplacedWarning:
+            ("exclamationmark.triangle", "Bouncer can't collapse: too few of its invisible Divider segments are left next to the Divider.")
         case .collapsed: ("chevron.left", "Reveal the Hidden Section")
         case .revealed: ("chevron.right", "Collapse the Hidden Section")
         }

@@ -49,4 +49,59 @@ struct SegmentPlacementTests {
 
         #expect(bouncer.look.dividerSegmentLengths.filter { $0 > 0 }.count < 3)
     }
+
+    @Test("too few segments in place: launch doesn't Collapse and the Toggle warns")
+    func tooFewRefusesLaunch() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: Self.onlyTwoInPlace))
+
+        bouncer.handle(.launchFinished)
+
+        #expect(bouncer.look.state == .revealed)
+        #expect(bouncer.look.dividerSegmentLengths.allSatisfy { $0 == 0 })
+        #expect(bouncer.look.toggleIcon == .segmentsMisplacedWarning)
+    }
+
+    @Test("too few segments in place: a click doesn't Collapse")
+    func tooFewRefusesClick() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+        bouncer.handle(.toggleClicked)
+
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: Self.onlyTwoInPlace))
+        bouncer.handle(.toggleClicked)
+
+        #expect(bouncer.look.state == .revealed)
+        #expect(bouncer.look.toggleIcon == .segmentsMisplacedWarning)
+    }
+
+    @Test("a wider display needing more segments than are in place doesn't Collapse")
+    func tooFewForNewDisplay() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        // Four in place: enough for one 1512pt display (3), not for 6016pt beside it (9).
+        let xs = (1...4).map(Self.runX) + (5...16).map { Self.runX($0) - 40 }
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: xs))
+        bouncer.handle(.launchFinished)
+        #expect(bouncer.look.state == .collapsed)
+
+        bouncer.handle(.displayWidthsChanged([1512, 6016]))
+
+        #expect(bouncer.look.state == .revealed)
+        #expect(bouncer.look.dividerSegmentLengths.allSatisfy { $0 == 0 })
+        #expect(bouncer.look.toggleIcon == .segmentsMisplacedWarning)
+    }
+
+    @Test("a misplaced Toggle's warning wins over misplaced segments")
+    func toggleWarningWins() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: Self.onlyTwoInPlace))
+        bouncer.handle(.toggleSectionObserved(.hidden))
+
+        #expect(bouncer.look.toggleIcon == .warning)
+    }
+
+    /// Two segments next to the Divider and the other fourteen beyond a 30pt item.
+    static let onlyTwoInPlace = (1...2).map(runX) + (3...16).map { runX($0) - 30 }
 }
