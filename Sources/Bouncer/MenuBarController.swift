@@ -114,12 +114,7 @@ final class MenuBarController: NSObject {
                     Self.log.error("Status items weren't on screen after \(Self.launchTimeout); collapsing anyway")
                     break
                 }
-                do {
-                    try await Task.sleep(for: Self.launchCheckInterval)
-                } catch {
-                    Self.log.info("Launch wait cancelled: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
+                guard await Self.sleep(for: Self.launchCheckInterval, in: "Launch wait") else { return }
             }
             guard let self else { return }
             self.logItemPositions()
@@ -131,13 +126,29 @@ final class MenuBarController: NSObject {
     }
 
     private var itemsAreInPlace: Bool {
-        guard let toggleWindow = toggle.button?.window, let dividerWindow = divider.button?.window else {
+        guard let toggleWindow, let dividerWindow else { return false }
+        return Self.isPlaced(toggleWindow) && Self.isPlaced(dividerWindow)
+    }
+
+    private var toggleWindow: NSWindow? { toggle.button?.window }
+    private var dividerWindow: NSWindow? { divider.button?.window }
+
+    /// On macOS 27 a new status item's window starts as (0, 0, width, 0) with a screen
+    /// already attached, and moves through transient frames while the menu bar lays it
+    /// out; it has been placed once it has a height and a screen.
+    private static func isPlaced(_ window: NSWindow) -> Bool {
+        window.screen != nil && window.frame.height > 0
+    }
+
+    /// Sleeps between checks of a polling loop. False when the task was cancelled, so
+    /// the loop should stop.
+    private static func sleep(for interval: Duration, in loop: String) async -> Bool {
+        do {
+            try await Task.sleep(for: interval)
+            return true
+        } catch {
+            log.info("\(loop, privacy: .public) cancelled: \(error.localizedDescription, privacy: .public)")
             return false
-        }
-        // On macOS 27 a new status item's window starts as (0, 0, width, 0) with a screen
-        // already attached; it has been placed in the menu bar once it has a height.
-        return [toggleWindow, dividerWindow].allSatisfy { window in
-            window.screen != nil && window.frame.width > 0 && window.frame.height > 0
         }
     }
 
@@ -160,12 +171,7 @@ final class MenuBarController: NSObject {
             while true {
                 guard let self else { return }
                 self.poll()
-                do {
-                    try await Task.sleep(for: Self.pollInterval)
-                } catch {
-                    Self.log.info("Auto-collapse polling cancelled: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
+                guard await Self.sleep(for: Self.pollInterval, in: "Auto-collapse polling") else { return }
             }
         }
     }
@@ -195,17 +201,14 @@ final class MenuBarController: NSObject {
     }
 
     private func readToggleSection() -> ToggleSection? {
-        guard let toggleWindow = toggle.button?.window, let dividerWindow = divider.button?.window else {
+        guard let toggleWindow, let dividerWindow,
+              Self.isPlaced(toggleWindow), Self.isPlaced(dividerWindow) else {
             return nil
         }
         // On macOS 27 Bouncer's items can be reported on either display, while they are
         // drawn on all of them. Absolute positions are therefore meaningless; only the
         // order of two items reported on the same display is.
-        guard let toggleScreen = toggleWindow.screen, let dividerScreen = dividerWindow.screen,
-              toggleScreen.frame == dividerScreen.frame,
-              toggleWindow.frame.height > 0, dividerWindow.frame.height > 0 else {
-            return nil
-        }
+        guard toggleWindow.screen?.frame == dividerWindow.screen?.frame else { return nil }
         return toggleWindow.frame.minX < dividerWindow.frame.minX ? .hidden : .shown
     }
 
@@ -214,7 +217,7 @@ final class MenuBarController: NSObject {
     /// item's window.
     @objc private func windowMoved(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
-              window === toggle.button?.window || window === divider.button?.window else {
+              window === toggleWindow || window === dividerWindow else {
             return
         }
         observeToggleSection()
@@ -266,32 +269,23 @@ final class MenuBarController: NSObject {
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(screensChanged),
+            selector: #selector(displaysMayHaveChanged),
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(systemWoke),
-            name: NSWorkspace.didWakeNotification,
-            object: nil
-        )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(systemWoke),
-            name: NSWorkspace.screensDidWakeNotification,
-            object: nil
-        )
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(displaysMayHaveChanged),
+                name: name,
+                object: nil
+            )
+        }
     }
 
-    @objc private func screensChanged() {
-        send(.displayWidthsChanged(Self.displayWidths()))
-        observeToggleSection()
-    }
-
-    /// Displays can come back with different widths after sleep, and macOS may have
-    /// re-laid out the menu bar, so re-measure and re-apply the look.
-    @objc private func systemWoke() {
+    /// A screen change, or a wake from sleep: displays can come back with different
+    /// widths and macOS may have re-laid out the menu bar, so re-measure and re-apply the look.
+    @objc private func displaysMayHaveChanged() {
         send(.displayWidthsChanged(Self.displayWidths()))
         observeToggleSection()
     }
