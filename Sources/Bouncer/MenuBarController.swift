@@ -89,8 +89,8 @@ final class MenuBarController: NSObject {
         let (symbol, description) = switch look.toggleIcon {
         case .warning:
             ("exclamationmark.triangle", "Bouncer can't collapse while it's left of the Divider. ⌘-drag it back to the right.")
-        case .collapsed: ("chevron.left", "Reveal hidden menu bar items")
-        case .revealed: ("chevron.right", "Collapse hidden menu bar items")
+        case .collapsed: ("chevron.left", "Reveal the Hidden Section")
+        case .revealed: ("chevron.right", "Collapse the Hidden Section")
         }
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         button.toolTip = description
