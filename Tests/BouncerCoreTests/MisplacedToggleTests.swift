@@ -45,4 +45,32 @@ struct MisplacedToggleTests {
 
         #expect(bouncer.look.showsToggleWarning)
     }
+
+    @Test("dragging the Toggle back clears the warning and a click Collapses again")
+    func draggingBackRestoresCollapsing() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+        bouncer.handle(.toggleClicked)
+        bouncer.handle(.toggleSectionObserved(.hidden))
+        bouncer.handle(.toggleClicked)
+
+        bouncer.handle(.toggleSectionObserved(.shown))
+        bouncer.handle(.toggleClicked)
+
+        #expect(!bouncer.look.showsToggleWarning)
+        #expect(bouncer.look.state == .collapsed)
+    }
+
+    @Test("after a refused launch, dragging the Toggle back lets a click Collapse")
+    func draggingBackAfterRefusedLaunch() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        bouncer.handle(.toggleSectionObserved(.hidden))
+        bouncer.handle(.launchFinished)
+
+        bouncer.handle(.toggleSectionObserved(.shown))
+        bouncer.handle(.toggleClicked)
+
+        #expect(bouncer.look.state == .collapsed)
+        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752])
+    }
 }
