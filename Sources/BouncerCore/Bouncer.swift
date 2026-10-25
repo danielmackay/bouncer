@@ -14,6 +14,9 @@ public enum Event: Sendable, Equatable {
     /// Widths in points of every attached display, in any order. Sent at launch and
     /// whenever the screen configuration changes.
     case displayWidthsChanged([Double])
+    /// Time has moved on; Bouncer reads how far from its clock. The app sends this from
+    /// a polling loop.
+    case timePassed
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -30,8 +33,12 @@ public struct MenuBarLook: Sendable, Equatable {
 public struct Bouncer: Sendable {
     private var state: HiddenSectionState = .revealed
     private var displays: DividerSizing?
+    private let clock: any BouncerClock
+    private var autoCollapse = AutoCollapseCountdown()
 
-    public init() {}
+    public init(clock: any BouncerClock = SystemClock()) {
+        self.clock = clock
+    }
 
     public var look: MenuBarLook {
         let sizing = displays ?? .none
@@ -51,12 +58,19 @@ public struct Bouncer: Sendable {
             state = .collapsed
         case .toggleClicked:
             state = state == .revealed ? .collapsed : .revealed
+            if state == .revealed {
+                autoCollapse.start(now: clock.now)
+            }
         case .displayWidthsChanged(let widths):
             // Mid-reconfiguration and around sleep, the system can briefly report no
             // screens. Keeping the last real sizing stops a Collapsed Hidden Section
             // from flashing into view during that gap.
             if let sizing = DividerSizing(displayWidths: widths) {
                 displays = sizing
+            }
+        case .timePassed:
+            if state == .revealed, autoCollapse.isDue(now: clock.now) {
+                state = .collapsed
             }
         }
     }
