@@ -52,7 +52,7 @@ public struct MenuBarLook: Sendable, Equatable {
 /// Bouncer's decisions: feed it events, read back the look.
 public struct Bouncer: Sendable {
     private var state: HiddenSectionState = .revealed
-    private var displays: DividerSizing?
+    private var sizing: DividerSizing?
     private let clock: any BouncerClock
     private var autoCollapse = AutoCollapseCountdown()
     private var toggleGuard = MisplacedToggleGuard()
@@ -62,7 +62,7 @@ public struct Bouncer: Sendable {
     }
 
     public var look: MenuBarLook {
-        let sizing = displays ?? .none
+        let sizing = self.sizing ?? .none
         return MenuBarLook(
             state: state,
             dividerSegmentLengths: Array(
@@ -94,8 +94,8 @@ public struct Bouncer: Sendable {
             // Mid-reconfiguration and around sleep, the system can briefly report no
             // screens. Keeping the last real sizing stops a Collapsed Hidden Section
             // from flashing into view during that gap.
-            if let sizing = DividerSizing(displayWidths: widths) {
-                displays = sizing
+            if let newSizing = DividerSizing(displayWidths: widths) {
+                sizing = newSizing
             }
         case .timePassed:
             // isDue ends the countdown whether or not the guard lets this Collapse
