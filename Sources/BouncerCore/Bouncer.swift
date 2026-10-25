@@ -17,6 +17,11 @@ public enum Event: Sendable, Equatable {
     /// Time has moved on; Bouncer reads how far from its clock. The app sends this from
     /// a polling loop.
     case timePassed
+    /// The pointer moved onto the menu bar, or into the band just below it where a
+    /// Menu Bar Item's menu opens, on whichever display it is on.
+    case pointerEnteredMenuBarZone
+    /// The pointer moved out of that zone.
+    case pointerLeftMenuBarZone
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -59,7 +64,9 @@ public struct Bouncer: Sendable {
         case .toggleClicked:
             state = state == .revealed ? .collapsed : .revealed
             if state == .revealed {
-                autoCollapse.start(now: clock.now)
+                autoCollapse.arm(now: clock.now)
+            } else {
+                autoCollapse.disarm()
             }
         case .displayWidthsChanged(let widths):
             // Mid-reconfiguration and around sleep, the system can briefly report no
@@ -72,6 +79,10 @@ public struct Bouncer: Sendable {
             if state == .revealed, autoCollapse.isDue(now: clock.now) {
                 state = .collapsed
             }
+        case .pointerEnteredMenuBarZone:
+            autoCollapse.pointerEntered()
+        case .pointerLeftMenuBarZone:
+            autoCollapse.pointerLeft(now: clock.now)
         }
     }
 }
