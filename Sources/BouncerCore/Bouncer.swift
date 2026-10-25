@@ -22,6 +22,8 @@ public struct MenuBarLook: Sendable, Equatable {
     /// Length in points of each Divider segment, in creation order. The count depends
     /// only on the attached displays, so it is the same whether Revealed or Collapsed.
     public var dividerSegmentLengths: [Double]
+    /// Whether the visible Divider draws its thin line.
+    public var isDividerLineVisible: Bool
 }
 
 /// Bouncer's decisions: feed it events, read back the look.
@@ -38,7 +40,8 @@ public struct Bouncer: Sendable {
             dividerSegmentLengths: Array(
                 repeating: state == .collapsed ? sizing.segmentLength : 0,
                 count: sizing.segmentCount
-            )
+            ),
+            isDividerLineVisible: state == .revealed
         )
     }
 
