@@ -237,6 +237,22 @@ struct AutoCollapseTimeoutTests {
         #expect(scenario.state == .revealed)
     }
 
+    @Test("picking a timeout while Revealed with Off starts nothing until the next countdown")
+    func offToTimeoutWaitsForNextCountdown() {
+        var scenario = Scenario()
+        scenario.handle(.autoCollapseTimeoutChanged(.off))
+        scenario.handle(.toggleClicked)
+
+        scenario.handle(.autoCollapseTimeoutChanged(.after(.seconds(5))))
+        scenario.wait(.seconds(3600))
+        #expect(scenario.state == .revealed)
+
+        scenario.handle(.pointerEnteredMenuBarZone)
+        scenario.handle(.pointerLeftMenuBarZone)
+        scenario.wait(.seconds(5))
+        #expect(scenario.state == .collapsed)
+    }
+
     @Test("a zero or negative timeout means Off rather than collapsing at once")
     func nonPositiveTimeoutIsOff() {
         var scenario = Scenario()

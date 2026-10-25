@@ -21,8 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindow = SettingsWindowController(preferences: preferences, launchAtLogin: launchAtLogin)
         self.settingsWindow = settingsWindow
         menuBar.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }
-        // A failed first-launch registration would otherwise go unnoticed until Daniel
-        // happened to open Settings.
+        // Opening Settings is how a failed first-launch registration reaches Daniel: the
+        // error shows there, and would otherwise go unnoticed until he opened it himself.
         if launchAtLogin.errorMessage != nil {
             settingsWindow.show()
         }
