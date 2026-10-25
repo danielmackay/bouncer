@@ -17,7 +17,7 @@ struct DividerSizingTests {
     func notchedDisplayExample() {
         let bouncer = Bouncer.launched(displayWidths: [1512])
 
-        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752])
+        #expect(bouncer.look.dividerSegmentLengths.filter { $0 > 0 } == [752, 752, 752])
     }
 
     @Test("two mixed displays: sized by the narrowest, wide enough for the widest")
@@ -60,7 +60,7 @@ struct DividerSizingTests {
 
         bouncer.handle(.displayWidthsChanged([]))
 
-        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752])
+        #expect(bouncer.look.dividerSegmentLengths.filter { $0 > 0 } == [752, 752, 752])
     }
 
     @Test("nonsense widths are ignored")
@@ -69,7 +69,7 @@ struct DividerSizingTests {
 
         bouncer.handle(.displayWidthsChanged([0, -40, .nan, .infinity]))
 
-        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752])
+        #expect(bouncer.look.dividerSegmentLengths.filter { $0 > 0 } == [752, 752, 752])
     }
 
     @Test("Revealing sets every segment to zero length")
@@ -99,7 +99,8 @@ private func expectHides(
     widest: Double,
     sourceLocation: SourceLocation = #_sourceLocation
 ) {
-    let lengths = look.dividerSegmentLengths
+    // Pool segments the displays don't need sit at zero; only the ones in use hide anything.
+    let lengths = look.dividerSegmentLengths.filter { $0 > 0 }
     #expect(!lengths.isEmpty, sourceLocation: sourceLocation)
     for length in lengths {
         #expect(length < narrowest / 2, "segment \(length) reaches half of \(narrowest)", sourceLocation: sourceLocation)

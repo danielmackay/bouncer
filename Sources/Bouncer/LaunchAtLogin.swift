@@ -9,7 +9,7 @@ import os
 @MainActor
 @Observable
 final class LaunchAtLogin {
-    private static let log = Logger(subsystem: "dev.danielmackay.Bouncer", category: "LaunchAtLogin")
+    private static let log = Logger(bouncerCategory: "LaunchAtLogin")
     /// Remembers only that the on-by-default registration has been done once, so turning
     /// launch at login off isn't undone on the next launch. It is not the switch's state.
     private static let defaultAppliedKey = "launchAtLoginDefaultApplied"
@@ -21,10 +21,13 @@ final class LaunchAtLogin {
     /// The last registration failure, shown in the Settings window until the next attempt.
     private(set) var errorMessage: String?
 
-    /// Registered counts as on even while waiting for approval: the item exists and only
-    /// Daniel's approval in System Settings is missing.
-    var isEnabled: Bool { status == .enabled || status == .requiresApproval }
+    /// On only once Bouncer will really launch at login. While approval is pending it
+    /// won't, so the switch shows off and the approval hint explains what's missing.
+    var isEnabled: Bool { status == .enabled }
     var needsApproval: Bool { status == .requiresApproval }
+    /// Bouncer has asked to launch at login, whether or not it's approved yet. Asking
+    /// again wouldn't get it approved any sooner.
+    private var isRegistered: Bool { isEnabled || needsApproval }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -40,11 +43,11 @@ final class LaunchAtLogin {
     func applyDefaultOnFirstLaunch() {
         guard !defaults.bool(forKey: Self.defaultAppliedKey) else { return }
         refresh()
-        if !isEnabled {
+        if !isRegistered {
             setEnabled(true)
         }
         // A failed first registration leaves the marker unset so the next launch retries.
-        if isEnabled {
+        if isRegistered {
             defaults.set(true, forKey: Self.defaultAppliedKey)
         }
     }

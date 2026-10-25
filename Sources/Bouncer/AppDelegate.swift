@@ -21,16 +21,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindow = SettingsWindowController(preferences: preferences, launchAtLogin: launchAtLogin)
         self.settingsWindow = settingsWindow
         menuBar.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }
-        // A failed first-launch registration would otherwise go unnoticed until Daniel
-        // happened to open Settings.
+        // Opening Settings is how a failed first-launch registration reaches Daniel: the
+        // error shows there, and would otherwise go unnoticed until he opened it himself.
         if launchAtLogin.errorMessage != nil {
             settingsWindow.show()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Covers every way out (the menu's Quit, logout, a kill from Activity Monitor
-        // that goes through terminate) so no Menu Bar Item is left in the System Overflow.
-        menuBar?.resetDivider()
+        // Runs for every quit that goes through terminate: the menu's Quit, ⌘Q, logout
+        // and shutdown. A force quit or SIGKILL skips it, but then Bouncer's status items
+        // vanish with the process, taking the Divider's width with them.
+        menuBar?.prepareForQuit()
     }
 }

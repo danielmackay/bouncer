@@ -17,53 +17,77 @@ public enum Event: Sendable, Equatable {
     /// Time has moved on; Bouncer reads how far from its clock. The app sends this from
     /// a polling loop.
     case timePassed
-    /// The pointer moved onto the menu bar, or into the band just below it where a
-    /// Menu Bar Item's menu opens, on whichever display it is on.
+    /// The pointer is on the menu bar, or in the band just below it where a Menu Bar
+    /// Item's menu opens, on whichever display it is on. The app may repeat this and
+    /// `pointerLeftMenuBarZone` on every poll; only a change of zone counts.
     case pointerEnteredMenuBarZone
-    /// The pointer moved out of that zone.
+    /// The pointer is outside that zone.
     case pointerLeftMenuBarZone
     /// The user picked a new Auto-collapse timeout. It applies from the next countdown.
     case autoCollapseTimeoutChanged(AutoCollapseTimeout)
     /// Which section the Toggle is in. Sent once the order can be read at launch and
     /// again whenever Bouncer's status items may have moved, such as after a ⌘-drag.
     case toggleSectionObserved(ToggleSection)
+    /// Bouncer is about to quit. Its status items vanish with the process, but a Collapsed
+    /// Divider must shrink first or macOS can leave the Hidden Section in the System Overflow.
+    case terminating
+}
+
+/// What the Toggle's icon shows. The AppKit layer maps each case to a symbol and tooltip.
+public enum ToggleIcon: Sendable, Equatable {
+    case collapsed
+    case revealed
+    /// The Toggle sits in the Hidden Section, so a click can't Collapse. It replaces the
+    /// state icon in either state: explaining why collapsing isn't working matters more.
+    case warning
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
 public struct MenuBarLook: Sendable, Equatable {
     public var state: HiddenSectionState
-    /// Length in points of each Divider segment, in creation order. The count depends
-    /// only on the attached displays, so it is the same whether Revealed or Collapsed.
+    /// Length in points of each Divider segment, in creation order. Segments the displays
+    /// don't need are 0. The count is `Bouncer.dividerSegmentPoolSize` unless the displays
+    /// need more, and is the same whether Revealed or Collapsed.
     public var dividerSegmentLengths: [Double]
     /// Whether the visible Divider draws its thin line.
     public var isDividerLineVisible: Bool
-    /// Whether the Toggle shows its warning icon because it sits in the Hidden Section.
-    public var showsToggleWarning: Bool
+    public var toggleIcon: ToggleIcon
 }
 
 /// Bouncer's decisions: feed it events, read back the look.
 public struct Bouncer: Sendable {
+    /// How many Divider segments the look always covers, so the app can create them all at
+    /// launch in first-launch order. 16 is enough for a 6016pt display next to one as
+    /// narrow as 760pt; a mix needing more still gets them, as extra entries in the look.
+    public static let dividerSegmentPoolSize = 16
+
     private var state: HiddenSectionState = .revealed
-    private var displays: DividerSizing?
+    private var sizing: DividerSizing?
     private let clock: any BouncerClock
     private var autoCollapse = AutoCollapseCountdown()
     private var toggleGuard = MisplacedToggleGuard()
+    /// Final: once quitting, nothing may Collapse again before the process exits.
+    private var isTerminating = false
 
     public init(clock: any BouncerClock = SystemClock()) {
         self.clock = clock
     }
 
     public var look: MenuBarLook {
-        let sizing = displays ?? .none
+        let sizing = self.sizing ?? .none
+        let used = Array(repeating: state == .collapsed ? sizing.segmentLength : 0, count: sizing.segmentCount)
+        let unused = Array(repeating: 0.0, count: max(0, Self.dividerSegmentPoolSize - sizing.segmentCount))
         return MenuBarLook(
             state: state,
-            dividerSegmentLengths: Array(
-                repeating: state == .collapsed ? sizing.segmentLength : 0,
-                count: sizing.segmentCount
-            ),
+            dividerSegmentLengths: used + unused,
             isDividerLineVisible: state == .revealed,
-            showsToggleWarning: toggleGuard.showsWarning
+            toggleIcon: toggleIcon
         )
+    }
+
+    private var toggleIcon: ToggleIcon {
+        if toggleGuard.showsWarning { return .warning }
+        return state == .collapsed ? .collapsed : .revealed
     }
 
     public mutating func handle(_ event: Event) {
@@ -81,8 +105,8 @@ public struct Bouncer: Sendable {
             // Mid-reconfiguration and around sleep, the system can briefly report no
             // screens. Keeping the last real sizing stops a Collapsed Hidden Section
             // from flashing into view during that gap.
-            if let sizing = DividerSizing(displayWidths: widths) {
-                displays = sizing
+            if let newSizing = DividerSizing(displayWidths: widths) {
+                sizing = newSizing
             }
         case .timePassed:
             // isDue ends the countdown whether or not the guard lets this Collapse
@@ -99,13 +123,17 @@ public struct Bouncer: Sendable {
             autoCollapse.timeout = timeout
         case .toggleSectionObserved(let section):
             toggleGuard.toggleSection = section
+        case .terminating:
+            isTerminating = true
+            state = .revealed
+            autoCollapse.disarm()
         }
     }
 
-    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard applies
-    /// to all of them.
+    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard and
+    /// quitting apply to all of them.
     private mutating func collapse() {
-        guard toggleGuard.allowsCollapse else { return }
+        guard !isTerminating, toggleGuard.allowsCollapse else { return }
         state = .collapsed
         autoCollapse.disarm()
     }

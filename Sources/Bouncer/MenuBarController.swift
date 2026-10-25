@@ -6,7 +6,7 @@ import os
 /// it returns; every decision belongs to `Bouncer`.
 @MainActor
 final class MenuBarController: NSObject {
-    private static let log = Logger(subsystem: "dev.danielmackay.Bouncer", category: "MenuBar")
+    private static let log = Logger(bouncerCategory: "MenuBar")
 
     /// Autosave names are how macOS remembers each item's position across launches and
     /// rebuilds. Renaming one makes macOS treat it as a brand-new item.
@@ -27,8 +27,9 @@ final class MenuBarController: NSObject {
     private let toggle: NSStatusItem
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
-    private var isPointerInZone = false
     private var lastObservedToggleSection: ToggleSection?
+    /// Only for logging each change of state once, not every time the look is applied.
+    private var lastAppliedState: HiddenSectionState?
     private let menu: NSMenu
     /// What the menu's Settings… item does; the window lives outside the menu bar glue.
     var onOpenSettings: (() -> Void)?
@@ -38,6 +39,11 @@ final class MenuBarController: NSObject {
         // so creating right to left gives the first-launch order: segments, Divider, Toggle.
         toggle = Self.makeStatusItem(length: NSStatusItem.squareLength, autosaveName: AutosaveName.toggle)
         divider = Self.makeStatusItem(length: Self.dividerWidth, autosaveName: AutosaveName.divider)
+        // The whole pool up front: a segment created later lands at the far left of the
+        // menu bar instead of next to the Divider.
+        segments = (0..<Bouncer.dividerSegmentPoolSize).map { index in
+            Self.makeStatusItem(length: 0, autosaveName: AutosaveName.segment(index))
+        }
         menu = NSMenu()
         super.init()
 
@@ -52,21 +58,23 @@ final class MenuBarController: NSObject {
         pollPointerAndTime()
     }
 
-    /// Shrinks every segment to zero so quitting never strands items in the System Overflow.
-    func resetDivider() {
-        for segment in segments {
-            segment.length = 0
-        }
+    /// Applies the core's quitting look, so quitting never strands items in the System Overflow.
+    func prepareForQuit() {
+        send(.terminating)
     }
 
     // MARK: - Applying the core's look
 
     private func apply() {
         let look = bouncer.look
+        if look.state != lastAppliedState {
+            Self.log.info("Hidden Section \(look.state == .collapsed ? "Collapsed" : "Revealed", privacy: .public)")
+            lastAppliedState = look.state
+        }
         growSegmentPool(to: look.dividerSegmentLengths.count)
         for (index, segment) in segments.enumerated() {
-            // Extra segments left over from a display that has gone stay at zero; removing
-            // them would make macOS forget their positions.
+            // Segments grown past the pool for a display mix that has since gone stay at
+            // zero; removing them would make macOS forget their positions.
             let length = index < look.dividerSegmentLengths.count ? look.dividerSegmentLengths[index] : 0
             segment.length = CGFloat(length)
         }
@@ -74,7 +82,11 @@ final class MenuBarController: NSObject {
         applyToggleIcon(for: look)
     }
 
+    /// Only for a display mix beyond what the launch pool covers. The new segments start
+    /// at the far left of the menu bar, so they may not sit next to the Divider.
     private func growSegmentPool(to count: Int) {
+        guard segments.count < count else { return }
+        Self.log.warning("The displays need \(count) Divider segments but the pool has \(self.segments.count); adding more at the far left")
         while segments.count < count {
             let index = segments.count
             segments.append(Self.makeStatusItem(length: 0, autosaveName: AutosaveName.segment(index)))
@@ -86,11 +98,11 @@ final class MenuBarController: NSObject {
             Self.log.error("The Toggle has no button, so its icon can't be updated")
             return
         }
-        let (symbol, description) = switch (look.showsToggleWarning, look.state) {
-        case (true, _):
+        let (symbol, description) = switch look.toggleIcon {
+        case .warning:
             ("exclamationmark.triangle", "Bouncer can't collapse while it's left of the Divider. ⌘-drag it back to the right.")
-        case (false, .collapsed): ("chevron.left", "Reveal hidden menu bar items")
-        case (false, .revealed): ("chevron.right", "Collapse hidden menu bar items")
+        case .collapsed: ("chevron.left", "Reveal the Hidden Section")
+        case .revealed: ("chevron.right", "Collapse the Hidden Section")
         }
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         button.toolTip = description
@@ -99,7 +111,8 @@ final class MenuBarController: NSObject {
     // MARK: - Launch
 
     /// Collapsing before the status items are on screen gets lost, so launch only
-    /// finishes once the Toggle and the Divider have been laid out in the menu bar.
+    /// finishes once the Toggle, the Divider and every Divider segment have been laid
+    /// out in the menu bar.
     private func waitForItemsThenFinishLaunch() {
         Task { [weak self] in
             let deadline = ContinuousClock.now + Self.launchTimeout
@@ -108,12 +121,7 @@ final class MenuBarController: NSObject {
                     Self.log.error("Status items weren't on screen after \(Self.launchTimeout); collapsing anyway")
                     break
                 }
-                do {
-                    try await Task.sleep(for: Self.launchCheckInterval)
-                } catch {
-                    Self.log.info("Launch wait cancelled: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
+                guard await Self.sleep(for: Self.launchCheckInterval, in: "Launch wait") else { return }
             }
             guard let self else { return }
             self.logItemPositions()
@@ -125,13 +133,29 @@ final class MenuBarController: NSObject {
     }
 
     private var itemsAreInPlace: Bool {
-        guard let toggleWindow = toggle.button?.window, let dividerWindow = divider.button?.window else {
+        let windows = [toggleWindow, dividerWindow] + segments.map { $0.button?.window }
+        return windows.allSatisfy { window in window.map(Self.isPlaced) ?? false }
+    }
+
+    private var toggleWindow: NSWindow? { toggle.button?.window }
+    private var dividerWindow: NSWindow? { divider.button?.window }
+
+    /// On macOS 27 a new status item's window starts as (0, 0, width, 0) with a screen
+    /// already attached, and moves through transient frames while the menu bar lays it
+    /// out; it has been placed once it has a height and a screen.
+    private static func isPlaced(_ window: NSWindow) -> Bool {
+        window.screen != nil && window.frame.height > 0
+    }
+
+    /// Sleeps between checks of a polling loop. False when the task was cancelled, so
+    /// the loop should stop.
+    private static func sleep(for interval: Duration, in loop: String) async -> Bool {
+        do {
+            try await Task.sleep(for: interval)
+            return true
+        } catch {
+            log.info("\(loop, privacy: .public) cancelled: \(error.localizedDescription, privacy: .public)")
             return false
-        }
-        // On macOS 27 a new status item's window starts as (0, 0, width, 0) with a screen
-        // already attached; it has been placed in the menu bar once it has a height.
-        return [toggleWindow, dividerWindow].allSatisfy { window in
-            window.screen != nil && window.frame.width > 0 && window.frame.height > 0
         }
     }
 
@@ -154,23 +178,15 @@ final class MenuBarController: NSObject {
             while true {
                 guard let self else { return }
                 self.poll()
-                do {
-                    try await Task.sleep(for: Self.pollInterval)
-                } catch {
-                    Self.log.info("Auto-collapse polling cancelled: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
+                guard await Self.sleep(for: Self.pollInterval, in: "Auto-collapse polling") else { return }
             }
         }
     }
 
     private func poll() {
         let before = bouncer.look
-        let inZone = MenuBarZone.containsPointer()
-        if inZone != isPointerInZone {
-            isPointerInZone = inZone
-            bouncer.handle(inZone ? .pointerEnteredMenuBarZone : .pointerLeftMenuBarZone)
-        }
+        // Reported on every poll; the core tells a real exit from a repeat.
+        bouncer.handle(MenuBarZone.containsPointer() ? .pointerEnteredMenuBarZone : .pointerLeftMenuBarZone)
         bouncer.handle(.timePassed)
         // Re-applying an unchanged look four times a second would only churn the status items.
         if bouncer.look != before {
@@ -192,17 +208,14 @@ final class MenuBarController: NSObject {
     }
 
     private func readToggleSection() -> ToggleSection? {
-        guard let toggleWindow = toggle.button?.window, let dividerWindow = divider.button?.window else {
+        guard let toggleWindow, let dividerWindow,
+              Self.isPlaced(toggleWindow), Self.isPlaced(dividerWindow) else {
             return nil
         }
         // On macOS 27 Bouncer's items can be reported on either display, while they are
         // drawn on all of them. Absolute positions are therefore meaningless; only the
         // order of two items reported on the same display is.
-        guard let toggleScreen = toggleWindow.screen, let dividerScreen = dividerWindow.screen,
-              toggleScreen.frame == dividerScreen.frame,
-              toggleWindow.frame.height > 0, dividerWindow.frame.height > 0 else {
-            return nil
-        }
+        guard toggleWindow.screen?.frame == dividerWindow.screen?.frame else { return nil }
         return toggleWindow.frame.minX < dividerWindow.frame.minX ? .hidden : .shown
     }
 
@@ -211,7 +224,7 @@ final class MenuBarController: NSObject {
     /// item's window.
     @objc private func windowMoved(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
-              window === toggle.button?.window || window === divider.button?.window else {
+              window === toggleWindow || window === dividerWindow else {
             return
         }
         observeToggleSection()
@@ -219,6 +232,9 @@ final class MenuBarController: NSObject {
 
     // MARK: - Events
 
+    /// Events from outside the menu bar each get a named method, like this and
+    /// `prepareForQuit`. `send` stays private so the rest of the app can't feed the core
+    /// events only the menu bar should report, such as launch or a Toggle click.
     func autoCollapseTimeoutChanged(to timeout: AutoCollapseTimeout) {
         send(.autoCollapseTimeoutChanged(timeout))
     }
@@ -263,32 +279,23 @@ final class MenuBarController: NSObject {
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(screensChanged),
+            selector: #selector(displaysMayHaveChanged),
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(systemWoke),
-            name: NSWorkspace.didWakeNotification,
-            object: nil
-        )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(systemWoke),
-            name: NSWorkspace.screensDidWakeNotification,
-            object: nil
-        )
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(displaysMayHaveChanged),
+                name: name,
+                object: nil
+            )
+        }
     }
 
-    @objc private func screensChanged() {
-        send(.displayWidthsChanged(Self.displayWidths()))
-        observeToggleSection()
-    }
-
-    /// Displays can come back with different widths after sleep, and macOS may have
-    /// re-laid out the menu bar, so re-measure and re-apply the look.
-    @objc private func systemWoke() {
+    /// A screen change, or a wake from sleep: displays can come back with different
+    /// widths and macOS may have re-laid out the menu bar, so re-measure and re-apply the look.
+    @objc private func displaysMayHaveChanged() {
         send(.displayWidthsChanged(Self.displayWidths()))
         observeToggleSection()
     }
