@@ -105,7 +105,8 @@ final class MenuBarController: NSObject {
     // MARK: - Launch
 
     /// Collapsing before the status items are on screen gets lost, so launch only
-    /// finishes once the Toggle and the Divider have been laid out in the menu bar.
+    /// finishes once the Toggle, the Divider and every Divider segment have been laid
+    /// out in the menu bar.
     private func waitForItemsThenFinishLaunch() {
         Task { [weak self] in
             let deadline = ContinuousClock.now + Self.launchTimeout
@@ -126,8 +127,8 @@ final class MenuBarController: NSObject {
     }
 
     private var itemsAreInPlace: Bool {
-        guard let toggleWindow, let dividerWindow else { return false }
-        return Self.isPlaced(toggleWindow) && Self.isPlaced(dividerWindow)
+        let windows = [toggleWindow, dividerWindow] + segments.map { $0.button?.window }
+        return windows.allSatisfy { window in window.map(Self.isPlaced) ?? false }
     }
 
     private var toggleWindow: NSWindow? { toggle.button?.window }
