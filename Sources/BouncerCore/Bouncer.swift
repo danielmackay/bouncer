@@ -85,8 +85,11 @@ public struct Bouncer: Sendable {
                 displays = sizing
             }
         case .timePassed:
+            // isDue ends the countdown whether or not the guard lets this Collapse
+            // through, so a skipped Auto-collapse isn't retried: dragging the Toggle back
+            // shouldn't hide items the moment it lands. The next Reveal starts a new one.
             if state == .revealed, autoCollapse.isDue(now: clock.now) {
-                state = .collapsed
+                collapse()
             }
         case .pointerEnteredMenuBarZone:
             autoCollapse.pointerEntered()
