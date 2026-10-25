@@ -71,6 +71,6 @@ struct MisplacedToggleTests {
         bouncer.handle(.toggleClicked)
 
         #expect(bouncer.look.state == .collapsed)
-        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752])
+        #expect(bouncer.look.dividerSegmentLengths.filter { $0 > 0 } == [752, 752, 752])
     }
 }

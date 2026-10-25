@@ -38,6 +38,11 @@ final class MenuBarController: NSObject {
         // so creating right to left gives the first-launch order: segments, Divider, Toggle.
         toggle = Self.makeStatusItem(length: NSStatusItem.squareLength, autosaveName: AutosaveName.toggle)
         divider = Self.makeStatusItem(length: Self.dividerWidth, autosaveName: AutosaveName.divider)
+        // The whole pool up front: a segment created later lands at the far left of the
+        // menu bar instead of next to the Divider.
+        segments = (0..<Bouncer.dividerSegmentPoolSize).map { index in
+            Self.makeStatusItem(length: 0, autosaveName: AutosaveName.segment(index))
+        }
         menu = NSMenu()
         super.init()
 
@@ -63,8 +68,8 @@ final class MenuBarController: NSObject {
         let look = bouncer.look
         growSegmentPool(to: look.dividerSegmentLengths.count)
         for (index, segment) in segments.enumerated() {
-            // Extra segments left over from a display that has gone stay at zero; removing
-            // them would make macOS forget their positions.
+            // Segments grown past the pool for a display mix that has since gone stay at
+            // zero; removing them would make macOS forget their positions.
             let length = index < look.dividerSegmentLengths.count ? look.dividerSegmentLengths[index] : 0
             segment.length = CGFloat(length)
         }
@@ -72,7 +77,11 @@ final class MenuBarController: NSObject {
         applyToggleIcon(for: look)
     }
 
+    /// Only for a display mix beyond what the launch pool covers. The new segments start
+    /// at the far left of the menu bar, so they may not sit next to the Divider.
     private func growSegmentPool(to count: Int) {
+        guard segments.count < count else { return }
+        Self.log.warning("The displays need \(count) Divider segments but the pool has \(self.segments.count); adding more at the far left")
         while segments.count < count {
             let index = segments.count
             segments.append(Self.makeStatusItem(length: 0, autosaveName: AutosaveName.segment(index)))
