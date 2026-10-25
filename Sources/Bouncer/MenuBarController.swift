@@ -27,7 +27,6 @@ final class MenuBarController: NSObject {
     private let toggle: NSStatusItem
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
-    private var isPointerInZone = false
     private var lastObservedToggleSection: ToggleSection?
     private let menu: NSMenu
     /// What the menu's Settings… item does; the window lives outside the menu bar glue.
@@ -173,11 +172,8 @@ final class MenuBarController: NSObject {
 
     private func poll() {
         let before = bouncer.look
-        let inZone = MenuBarZone.containsPointer()
-        if inZone != isPointerInZone {
-            isPointerInZone = inZone
-            bouncer.handle(inZone ? .pointerEnteredMenuBarZone : .pointerLeftMenuBarZone)
-        }
+        // Reported on every poll; the core tells a real exit from a repeat.
+        bouncer.handle(MenuBarZone.containsPointer() ? .pointerEnteredMenuBarZone : .pointerLeftMenuBarZone)
         bouncer.handle(.timePassed)
         // Re-applying an unchanged look four times a second would only churn the status items.
         if bouncer.look != before {

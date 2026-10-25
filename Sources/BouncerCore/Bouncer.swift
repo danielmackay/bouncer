@@ -17,10 +17,11 @@ public enum Event: Sendable, Equatable {
     /// Time has moved on; Bouncer reads how far from its clock. The app sends this from
     /// a polling loop.
     case timePassed
-    /// The pointer moved onto the menu bar, or into the band just below it where a
-    /// Menu Bar Item's menu opens, on whichever display it is on.
+    /// The pointer is on the menu bar, or in the band just below it where a Menu Bar
+    /// Item's menu opens, on whichever display it is on. The app may repeat this and
+    /// `pointerLeftMenuBarZone` on every poll; only a change of zone counts.
     case pointerEnteredMenuBarZone
-    /// The pointer moved out of that zone.
+    /// The pointer is outside that zone.
     case pointerLeftMenuBarZone
     /// The user picked a new Auto-collapse timeout. It applies from the next countdown.
     case autoCollapseTimeoutChanged(AutoCollapseTimeout)

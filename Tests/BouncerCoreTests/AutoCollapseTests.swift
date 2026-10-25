@@ -89,6 +89,26 @@ struct AutoCollapseTests {
         #expect(scenario.state == .collapsed)
     }
 
+    @Test("zone reports repeated on every poll count once: the countdown starts at the real exit")
+    func repeatedReportsCountOnce() {
+        var scenario = Scenario()
+        scenario.handle(.toggleClicked)
+
+        scenario.handle(.pointerEnteredMenuBarZone)
+        scenario.wait(.seconds(5))
+        scenario.handle(.pointerEnteredMenuBarZone)
+        scenario.wait(.seconds(5))
+        scenario.handle(.pointerLeftMenuBarZone)
+        scenario.wait(.seconds(5))
+        scenario.handle(.pointerLeftMenuBarZone)
+        scenario.wait(.seconds(4))
+        #expect(scenario.state == .revealed)
+
+        scenario.handle(.pointerLeftMenuBarZone)
+        scenario.wait(.seconds(1))
+        #expect(scenario.state == .collapsed)
+    }
+
     @Test("Reveal, wait 5s, Collapse by hand, Reveal with the pointer in the zone, wait 30s, still Revealed")
     func manualCollapseCancels() {
         var scenario = Scenario()
