@@ -13,9 +13,9 @@ struct SegmentPlacementTests {
     func rightOfDividerStaysZero() {
         var bouncer = Bouncer()
         bouncer.handle(.displayWidthsChanged([1512]))
-        // Segments 2 and 3 sit among the Shown Section; the rest close up the run.
-        var xs = [Self.runX(1), 1730, 1714]
-        xs += (2...14).map(Self.runX)
+        // A real launch reading: segments 2 and 3 sit among the Shown Section, 4 to 16
+        // close up the run, and segment 1 ended up at its far end, still unbroken.
+        let xs = [1245, 1730, 1714] + (1...13).map(Self.runX)
         bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: xs))
 
         bouncer.handle(.launchFinished)
