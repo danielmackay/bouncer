@@ -11,9 +11,9 @@ final class MenuBarController: NSObject {
     /// Autosave names are how macOS remembers each item's position across launches and
     /// rebuilds. Renaming one makes macOS treat it as a brand-new item.
     private enum AutosaveName {
-        static let toggle = "BouncerToggle"
-        static let divider = "BouncerDivider"
-        static func segment(_ index: Int) -> String { "BouncerDividerSegment\(index + 1)" }
+        static let toggle = "Bouncer.Toggle"
+        static let divider = "Bouncer.Divider"
+        static func segment(_ index: Int) -> String { "Bouncer.DividerSegment\(index + 1)" }
     }
 
     private static let dividerWidth: CGFloat = 8
