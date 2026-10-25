@@ -1,0 +1,75 @@
+name: Bouncer
+
+options:
+  bundleIdPrefix: dev.danielmackay
+  deploymentTarget:
+    macOS: "27.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: UU6P9X5NRU
+    CODE_SIGN_STYLE: Automatic
+    MACOSX_DEPLOYMENT_TARGET: "27.0"
+
+targets:
+  # All of Bouncer's decisions live here. Plain Swift on Foundation only: never import
+  # AppKit or SwiftUI, so the core stays testable without a running app.
+  BouncerCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/BouncerCore
+    settings:
+      base:
+        PRODUCT_NAME: BouncerCore
+
+  Bouncer:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Bouncer
+    dependencies:
+      - target: BouncerCore
+    info:
+      path: Sources/Bouncer/Info.plist
+      properties:
+        CFBundleDisplayName: Bouncer
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        # Agent app: no Dock icon and no app menu.
+        LSUIElement: true
+        LSMinimumSystemVersion: "27.0"
+        NSHumanReadableCopyright: "Copyright © 2026 Daniel Mackay. MIT licence."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.danielmackay.Bouncer
+        CODE_SIGN_IDENTITY: Apple Development
+        ENABLE_HARDENED_RUNTIME: NO
+        GENERATE_INFOPLIST_FILE: NO
+
+  BouncerCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/BouncerCoreTests
+    dependencies:
+      - target: BouncerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.danielmackay.BouncerCoreTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Bouncer:
+    build:
+      targets:
+        Bouncer: all
+        BouncerCoreTests: [test]
+    test:
+      targets:
+        - BouncerCoreTests
+    run:
+      config: Debug
