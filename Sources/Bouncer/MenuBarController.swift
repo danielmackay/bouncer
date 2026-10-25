@@ -28,6 +28,8 @@ final class MenuBarController: NSObject {
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
     private var lastObservedToggleSection: ToggleSection?
+    /// Only for logging each new segment layout once.
+    private var lastLoggedSegmentReading: SegmentReading?
     /// Only for logging each change of state once, not every time the look is applied.
     private var lastAppliedState: HiddenSectionState?
     private let menu: NSMenu
@@ -128,8 +130,9 @@ final class MenuBarController: NSObject {
             guard let self else { return }
             self.logItemPositions()
             // The order has to reach the core before launch finishes, or launch could
-            // Collapse with the Toggle in the Hidden Section.
-            self.observeToggleSection()
+            // Collapse with the Toggle in the Hidden Section or widen misplaced segments.
+            // Nothing has Collapsed yet, so the segment reading counts.
+            self.observeItemPositions()
             self.send(.launchFinished)
         }
     }
@@ -196,7 +199,14 @@ final class MenuBarController: NSObject {
         }
     }
 
-    // MARK: - Toggle position
+    // MARK: - Item positions
+
+    /// Reports where Bouncer's own items sit, at every point they may have moved. The core
+    /// decides what each reading means, including whether a segment reading taken now counts.
+    private func observeItemPositions() {
+        observeToggleSection()
+        observeDividerSegments()
+    }
 
     /// Reads which side of the visible Divider the Toggle is on and tells the core.
     /// Does nothing while the order can't be read, so a transient frame never flips it.
@@ -221,6 +231,37 @@ final class MenuBarController: NSObject {
         return toggleWindow.frame.minX < dividerWindow.frame.minX ? .hidden : .shown
     }
 
+    private struct SegmentReading: Equatable {
+        let dividerX: Double
+        let segmentXs: [Double]
+    }
+
+    /// Reports the Divider's and every segment's left edge. Does nothing while any of them
+    /// can't be read, so the core keeps its previous reading rather than a partial one.
+    private func observeDividerSegments() {
+        guard let reading = readDividerSegments() else { return }
+        if reading != lastLoggedSegmentReading {
+            let segments = reading.segmentXs.enumerated().map { "segment\($0.offset + 1)=x\(Int($0.element))" }
+            Self.log.info("Divider segments observed: divider=x\(Int(reading.dividerX)) \(segments.joined(separator: " "), privacy: .public)")
+            lastLoggedSegmentReading = reading
+        }
+        send(.dividerSegmentsObserved(dividerX: reading.dividerX, segmentXs: reading.segmentXs))
+    }
+
+    private func readDividerSegments() -> SegmentReading? {
+        guard let dividerWindow, Self.isPlaced(dividerWindow) else { return nil }
+        var segmentXs: [Double] = []
+        for segment in segments {
+            // Positions are only comparable on the same display, as in readToggleSection.
+            guard let window = segment.button?.window, Self.isPlaced(window),
+                  window.screen?.frame == dividerWindow.screen?.frame else {
+                return nil
+            }
+            segmentXs.append(Double(window.frame.minX))
+        }
+        return SegmentReading(dividerX: Double(dividerWindow.frame.minX), segmentXs: segmentXs)
+    }
+
     /// A ⌘-drag moves the status item's window, so window moves are the cue to re-read
     /// the order. Matching by identity in the handler copes with AppKit replacing an
     /// item's window.
@@ -229,7 +270,7 @@ final class MenuBarController: NSObject {
               window === toggleWindow || window === dividerWindow else {
             return
         }
-        observeToggleSection()
+        observeItemPositions()
     }
 
     // MARK: - Events
@@ -266,8 +307,8 @@ final class MenuBarController: NSObject {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
         } else {
             // Re-read first in case a ⌘-drag went unnoticed, so the click is judged
-            // against where the Toggle really is.
-            observeToggleSection()
+            // against where the Toggle and the segments really are.
+            observeItemPositions()
             send(.toggleClicked)
         }
     }
@@ -299,7 +340,7 @@ final class MenuBarController: NSObject {
     /// widths and macOS may have re-laid out the menu bar, so re-measure and re-apply the look.
     @objc private func displaysMayHaveChanged() {
         send(.displayWidthsChanged(Self.displayWidths()))
-        observeToggleSection()
+        observeItemPositions()
     }
 
     private static func displayWidths() -> [Double] {
