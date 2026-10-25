@@ -15,10 +15,32 @@ public struct SystemClock: BouncerClock {
     public var now: Duration { ContinuousClock.now - origin }
 }
 
+/// How long a Revealed Hidden Section waits, with the pointer away from the menu bar,
+/// before it Auto-collapses.
+public enum AutoCollapseTimeout: Sendable, Equatable, Hashable {
+    /// Never Auto-collapse; the Hidden Section stays Revealed until the Toggle is clicked.
+    case off
+    /// A zero or negative duration counts as `off`: collapsing the instant the pointer
+    /// leaves would make revealed items unreachable.
+    case after(Duration)
+
+    public static let `default`: AutoCollapseTimeout = .after(.seconds(10))
+
+    /// The countdown length, or nil when there is no countdown.
+    var interval: Duration? {
+        switch self {
+        case .off: nil
+        case .after(let duration): duration > .zero ? duration : nil
+        }
+    }
+}
+
 /// The countdown from Reveal to Auto-collapse. It runs only while the pointer is away
 /// from the menu bar, and every time it starts it starts from the full timeout.
 struct AutoCollapseCountdown: Sendable {
-    private let timeout: Duration = .seconds(10)
+    /// Read only when a countdown starts, so a change applies to the next countdown and
+    /// never stretches or cuts short the one already running.
+    var timeout: AutoCollapseTimeout = .default
     /// Between a Reveal and the next Collapse, whether or not the clock is running.
     private var isArmed = false
     private var isPointerInZone = false
@@ -59,6 +81,10 @@ struct AutoCollapseCountdown: Sendable {
     }
 
     private mutating func restart(now: Duration) {
-        deadline = isArmed && !isPointerInZone ? now + timeout : nil
+        guard isArmed, !isPointerInZone, let interval = timeout.interval else {
+            deadline = nil
+            return
+        }
+        deadline = now + interval
     }
 }

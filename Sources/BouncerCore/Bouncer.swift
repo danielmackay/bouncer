@@ -22,6 +22,8 @@ public enum Event: Sendable, Equatable {
     case pointerEnteredMenuBarZone
     /// The pointer moved out of that zone.
     case pointerLeftMenuBarZone
+    /// The user picked a new Auto-collapse timeout. It applies from the next countdown.
+    case autoCollapseTimeoutChanged(AutoCollapseTimeout)
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -83,6 +85,8 @@ public struct Bouncer: Sendable {
             autoCollapse.pointerEntered()
         case .pointerLeftMenuBarZone:
             autoCollapse.pointerLeft(now: clock.now)
+        case .autoCollapseTimeoutChanged(let timeout):
+            autoCollapse.timeout = timeout
         }
     }
 }
