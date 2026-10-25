@@ -113,6 +113,30 @@ struct AutoCollapseTests {
 
         #expect(scenario.state == .collapsed)
     }
+
+    @Test("Toggle in the Hidden Section when Auto-collapse is due: skipped, still Revealed")
+    func skippedWhileToggleMisplaced() {
+        var scenario = Scenario()
+
+        scenario.handle(.toggleClicked)
+        scenario.handle(.toggleSectionObserved(.hidden))
+        scenario.wait(.seconds(10))
+
+        #expect(scenario.state == .revealed)
+    }
+
+    @Test("a skipped Auto-collapse is over: dragging the Toggle back doesn't start another")
+    func skippedAutoCollapseDoesNotRetry() {
+        var scenario = Scenario()
+        scenario.handle(.toggleClicked)
+        scenario.handle(.toggleSectionObserved(.hidden))
+        scenario.wait(.seconds(10))
+
+        scenario.handle(.toggleSectionObserved(.shown))
+        scenario.wait(.seconds(60))
+
+        #expect(scenario.state == .revealed)
+    }
 }
 
 @Suite("Auto-collapse timeout")

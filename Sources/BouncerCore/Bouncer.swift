@@ -24,6 +24,9 @@ public enum Event: Sendable, Equatable {
     case pointerLeftMenuBarZone
     /// The user picked a new Auto-collapse timeout. It applies from the next countdown.
     case autoCollapseTimeoutChanged(AutoCollapseTimeout)
+    /// Which section the Toggle is in. Sent once the order can be read at launch and
+    /// again whenever Bouncer's status items may have moved, such as after a ⌘-drag.
+    case toggleSectionObserved(ToggleSection)
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -34,6 +37,8 @@ public struct MenuBarLook: Sendable, Equatable {
     public var dividerSegmentLengths: [Double]
     /// Whether the visible Divider draws its thin line.
     public var isDividerLineVisible: Bool
+    /// Whether the Toggle shows its warning icon because it sits in the Hidden Section.
+    public var showsToggleWarning: Bool
 }
 
 /// Bouncer's decisions: feed it events, read back the look.
@@ -42,6 +47,7 @@ public struct Bouncer: Sendable {
     private var displays: DividerSizing?
     private let clock: any BouncerClock
     private var autoCollapse = AutoCollapseCountdown()
+    private var toggleGuard = MisplacedToggleGuard()
 
     public init(clock: any BouncerClock = SystemClock()) {
         self.clock = clock
@@ -55,20 +61,21 @@ public struct Bouncer: Sendable {
                 repeating: state == .collapsed ? sizing.segmentLength : 0,
                 count: sizing.segmentCount
             ),
-            isDividerLineVisible: state == .revealed
+            isDividerLineVisible: state == .revealed,
+            showsToggleWarning: toggleGuard.showsWarning
         )
     }
 
     public mutating func handle(_ event: Event) {
         switch event {
         case .launchFinished:
-            state = .collapsed
+            collapse()
         case .toggleClicked:
-            state = state == .revealed ? .collapsed : .revealed
             if state == .revealed {
-                autoCollapse.arm(now: clock.now)
+                collapse()
             } else {
-                autoCollapse.disarm()
+                state = .revealed
+                autoCollapse.arm(now: clock.now)
             }
         case .displayWidthsChanged(let widths):
             // Mid-reconfiguration and around sleep, the system can briefly report no
@@ -78,8 +85,11 @@ public struct Bouncer: Sendable {
                 displays = sizing
             }
         case .timePassed:
+            // isDue ends the countdown whether or not the guard lets this Collapse
+            // through, so a skipped Auto-collapse isn't retried: dragging the Toggle back
+            // shouldn't hide items the moment it lands. The next Reveal starts a new one.
             if state == .revealed, autoCollapse.isDue(now: clock.now) {
-                state = .collapsed
+                collapse()
             }
         case .pointerEnteredMenuBarZone:
             autoCollapse.pointerEntered()
@@ -87,7 +97,17 @@ public struct Bouncer: Sendable {
             autoCollapse.pointerLeft(now: clock.now)
         case .autoCollapseTimeoutChanged(let timeout):
             autoCollapse.timeout = timeout
+        case .toggleSectionObserved(let section):
+            toggleGuard.toggleSection = section
         }
+    }
+
+    /// Every route to Collapsed goes through here, so the misplaced-Toggle guard applies
+    /// to all of them.
+    private mutating func collapse() {
+        guard toggleGuard.allowsCollapse else { return }
+        state = .collapsed
+        autoCollapse.disarm()
     }
 }
 

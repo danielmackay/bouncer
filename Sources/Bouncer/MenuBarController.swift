@@ -28,6 +28,7 @@ final class MenuBarController: NSObject {
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
     private var isPointerInZone = false
+    private var lastObservedToggleSection: ToggleSection?
     private let menu: NSMenu
     /// What the menu's Settings… item does; the window lives outside the menu bar glue.
     var onOpenSettings: (() -> Void)?
@@ -70,7 +71,7 @@ final class MenuBarController: NSObject {
             segment.length = CGFloat(length)
         }
         divider.button?.image = look.isDividerLineVisible ? Self.dividerLine : nil
-        applyToggleIcon(for: look.state)
+        applyToggleIcon(for: look)
     }
 
     private func growSegmentPool(to count: Int) {
@@ -80,14 +81,16 @@ final class MenuBarController: NSObject {
         }
     }
 
-    private func applyToggleIcon(for state: HiddenSectionState) {
+    private func applyToggleIcon(for look: MenuBarLook) {
         guard let button = toggle.button else {
             Self.log.error("The Toggle has no button, so its icon can't be updated")
             return
         }
-        let (symbol, description) = switch state {
-        case .collapsed: ("chevron.left", "Reveal hidden menu bar items")
-        case .revealed: ("chevron.right", "Collapse hidden menu bar items")
+        let (symbol, description) = switch (look.showsToggleWarning, look.state) {
+        case (true, _):
+            ("exclamationmark.triangle", "Bouncer can't collapse while it's left of the Divider. ⌘-drag it back to the right.")
+        case (false, .collapsed): ("chevron.left", "Reveal hidden menu bar items")
+        case (false, .revealed): ("chevron.right", "Collapse hidden menu bar items")
         }
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         button.toolTip = description
@@ -114,6 +117,9 @@ final class MenuBarController: NSObject {
             }
             guard let self else { return }
             self.logItemPositions()
+            // The order has to reach the core before launch finishes, or launch could
+            // Collapse with the Toggle in the Hidden Section.
+            self.observeToggleSection()
             self.send(.launchFinished)
         }
     }
@@ -172,6 +178,45 @@ final class MenuBarController: NSObject {
         }
     }
 
+    // MARK: - Toggle position
+
+    /// Reads which side of the visible Divider the Toggle is on and tells the core.
+    /// Does nothing while the order can't be read, so a transient frame never flips it.
+    private func observeToggleSection() {
+        guard let section = readToggleSection() else { return }
+        if section != lastObservedToggleSection {
+            Self.log.info("Toggle observed in the \(section == .hidden ? "Hidden" : "Shown", privacy: .public) Section")
+            lastObservedToggleSection = section
+        }
+        send(.toggleSectionObserved(section))
+    }
+
+    private func readToggleSection() -> ToggleSection? {
+        guard let toggleWindow = toggle.button?.window, let dividerWindow = divider.button?.window else {
+            return nil
+        }
+        // On macOS 27 Bouncer's items can be reported on either display, while they are
+        // drawn on all of them. Absolute positions are therefore meaningless; only the
+        // order of two items reported on the same display is.
+        guard let toggleScreen = toggleWindow.screen, let dividerScreen = dividerWindow.screen,
+              toggleScreen.frame == dividerScreen.frame,
+              toggleWindow.frame.height > 0, dividerWindow.frame.height > 0 else {
+            return nil
+        }
+        return toggleWindow.frame.minX < dividerWindow.frame.minX ? .hidden : .shown
+    }
+
+    /// A ⌘-drag moves the status item's window, so window moves are the cue to re-read
+    /// the order. Matching by identity in the handler copes with AppKit replacing an
+    /// item's window.
+    @objc private func windowMoved(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === toggle.button?.window || window === divider.button?.window else {
+            return
+        }
+        observeToggleSection()
+    }
+
     // MARK: - Events
 
     func autoCollapseTimeoutChanged(to timeout: AutoCollapseTimeout) {
@@ -202,11 +247,20 @@ final class MenuBarController: NSObject {
         if wantsMenu {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
         } else {
+            // Re-read first in case a ⌘-drag went unnoticed, so the click is judged
+            // against where the Toggle really is.
+            observeToggleSection()
             send(.toggleClicked)
         }
     }
 
     private func observeSystem() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowMoved(_:)),
+            name: NSWindow.didMoveNotification,
+            object: nil
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screensChanged),
@@ -229,12 +283,14 @@ final class MenuBarController: NSObject {
 
     @objc private func screensChanged() {
         send(.displayWidthsChanged(Self.displayWidths()))
+        observeToggleSection()
     }
 
     /// Displays can come back with different widths after sleep, and macOS may have
     /// re-laid out the menu bar, so re-measure and re-apply the look.
     @objc private func systemWoke() {
         send(.displayWidthsChanged(Self.displayWidths()))
+        observeToggleSection()
     }
 
     private static func displayWidths() -> [Double] {
