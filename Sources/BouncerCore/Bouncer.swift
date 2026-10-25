@@ -28,6 +28,10 @@ public enum Event: Sendable, Equatable {
     /// Which section the Toggle is in. Sent once the order can be read at launch and
     /// again whenever Bouncer's status items may have moved, such as after a ⌘-drag.
     case toggleSectionObserved(ToggleSection)
+    /// The left edges of the visible Divider and of every Divider segment, in creation
+    /// order, all read on the same display. Sent at the same points as
+    /// `toggleSectionObserved`; Bouncer decides whether the reading can be trusted.
+    case dividerSegmentsObserved(dividerX: Double, segmentXs: [Double])
     /// Bouncer is about to quit. Its status items vanish with the process, but a Collapsed
     /// Divider must shrink first or macOS can leave the Hidden Section in the System Overflow.
     case terminating
@@ -66,6 +70,7 @@ public struct Bouncer: Sendable {
     private let clock: any BouncerClock
     private var autoCollapse = AutoCollapseCountdown()
     private var toggleGuard = MisplacedToggleGuard()
+    private var placement = DividerSegmentPlacement()
     /// Final: once quitting, nothing may Collapse again before the process exits.
     private var isTerminating = false
 
@@ -74,15 +79,25 @@ public struct Bouncer: Sendable {
     }
 
     public var look: MenuBarLook {
-        let sizing = self.sizing ?? .none
-        let used = Array(repeating: state == .collapsed ? sizing.segmentLength : 0, count: sizing.segmentCount)
-        let unused = Array(repeating: 0.0, count: max(0, Self.dividerSegmentPoolSize - sizing.segmentCount))
-        return MenuBarLook(
+        MenuBarLook(
             state: state,
-            dividerSegmentLengths: used + unused,
+            dividerSegmentLengths: dividerSegmentLengths,
             isDividerLineVisible: state == .revealed,
             toggleIcon: toggleIcon
         )
+    }
+
+    /// The first in-place segments the displays need carry the length; every other
+    /// segment, out of place or unneeded, stays at zero.
+    private var dividerSegmentLengths: [Double] {
+        let sizing = self.sizing ?? .none
+        let length = state == .collapsed ? sizing.segmentLength : 0
+        var lengths = Array(repeating: 0.0, count: max(Self.dividerSegmentPoolSize, sizing.segmentCount))
+        let carriers = lengths.indices.filter(placement.isInPlace).prefix(sizing.segmentCount)
+        for index in carriers {
+            lengths[index] = length
+        }
+        return lengths
     }
 
     private var toggleIcon: ToggleIcon {
@@ -123,6 +138,8 @@ public struct Bouncer: Sendable {
             autoCollapse.timeout = timeout
         case .toggleSectionObserved(let section):
             toggleGuard.toggleSection = section
+        case .dividerSegmentsObserved(let dividerX, let segmentXs):
+            placement.observe(dividerX: dividerX, segmentXs: segmentXs)
         case .terminating:
             isTerminating = true
             state = .revealed
