@@ -29,6 +29,8 @@ final class MenuBarController: NSObject {
     private var segments: [NSStatusItem] = []
     private var isPointerInZone = false
     private let menu: NSMenu
+    /// What the menu's Settings… item does; the window lives outside the menu bar glue.
+    var onOpenSettings: (() -> Void)?
 
     override init() {
         // macOS places each new status item to the left of the ones created before it,
@@ -172,6 +174,10 @@ final class MenuBarController: NSObject {
 
     // MARK: - Events
 
+    func autoCollapseTimeoutChanged(to timeout: AutoCollapseTimeout) {
+        send(.autoCollapseTimeoutChanged(timeout))
+    }
+
     private func send(_ event: Event) {
         bouncer.handle(event)
         apply()
@@ -238,6 +244,12 @@ final class MenuBarController: NSObject {
     // MARK: - Menu
 
     private func configureMenu() {
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
+        menu.addItem(.separator())
+
         let hint = NSMenuItem(
             title: "Turn Items Off Completely in System Settings…",
             action: #selector(openMenuBarSettings),
@@ -252,6 +264,15 @@ final class MenuBarController: NSObject {
         let quit = NSMenuItem(title: "Quit Bouncer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         menu.addItem(quit)
+    }
+
+    @objc private func openSettings() {
+        guard let onOpenSettings else {
+            Self.log.error("Settings… chosen but nothing is set up to open the Settings window")
+            NSSound.beep()
+            return
+        }
+        onOpenSettings()
     }
 
     @objc private func openMenuBarSettings() {
