@@ -18,3 +18,4 @@ Bouncer is a personal tool targeting macOS 27 only, never distributed or sold, s
 
 - When Revealed on a notched display, items that don't fit still land in the System Overflow behind its « button.
 - Dragging Bouncer's own Toggle into the Hidden Section would hide the Toggle too, so Bouncer has to detect and refuse that state.
+- The Divider's segments are invisible, so ⌘-dragging other items can knock some out of the run next to the Divider; widened there, they would push the Shown Section into the System Overflow. Bouncer creates more segments than it needs and widens only those still in the run, refusing to Collapse when too few are left.
