@@ -40,9 +40,9 @@ struct SettingsView: View {
     }
 
     private static func title(for timeout: AutoCollapseTimeout) -> String {
-        switch timeout.storedSeconds {
-        case 0: "Off"
-        case let seconds: "\(seconds) seconds"
+        switch timeout {
+        case .off: "Off"
+        case .after(let duration): "\(duration.components.seconds) seconds"
         }
     }
 }
