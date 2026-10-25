@@ -19,11 +19,15 @@ final class MenuBarController: NSObject {
     private static let dividerWidth: CGFloat = 8
     private static let launchCheckInterval: Duration = .milliseconds(100)
     private static let launchTimeout: Duration = .seconds(5)
+    /// Fast enough that the pointer leaving the zone and the countdown running out are
+    /// both noticed within a quarter of a second.
+    private static let pollInterval: Duration = .milliseconds(250)
 
     private var bouncer = Bouncer()
     private let toggle: NSStatusItem
     private let divider: NSStatusItem
     private var segments: [NSStatusItem] = []
+    private var isPointerInZone = false
     private let menu: NSMenu
 
     override init() {
@@ -42,6 +46,7 @@ final class MenuBarController: NSObject {
         bouncer.handle(.displayWidthsChanged(Self.displayWidths()))
         apply()
         waitForItemsThenFinishLaunch()
+        pollPointerAndTime()
     }
 
     /// Shrinks every segment to zero so quitting never strands items in the System Overflow.
@@ -130,6 +135,39 @@ final class MenuBarController: NSObject {
         var parts = [describe("toggle", toggle), describe("divider", divider)]
         parts += segments.enumerated().map { describe("segment\($0.offset + 1)", $0.element) }
         Self.log.info("Status item positions at launch: \(parts.joined(separator: " "), privacy: .public)")
+    }
+
+    // MARK: - Auto-collapse
+
+    /// Reports the pointer zone and the passing of time to the core. Polling rather than
+    /// a global mouse monitor, because polling needs no permission.
+    private func pollPointerAndTime() {
+        Task { [weak self] in
+            while true {
+                guard let self else { return }
+                self.poll()
+                do {
+                    try await Task.sleep(for: Self.pollInterval)
+                } catch {
+                    Self.log.info("Auto-collapse polling cancelled: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+            }
+        }
+    }
+
+    private func poll() {
+        let before = bouncer.look
+        let inZone = MenuBarZone.containsPointer()
+        if inZone != isPointerInZone {
+            isPointerInZone = inZone
+            bouncer.handle(inZone ? .pointerEnteredMenuBarZone : .pointerLeftMenuBarZone)
+        }
+        bouncer.handle(.timePassed)
+        // Re-applying an unchanged look four times a second would only churn the status items.
+        if bouncer.look != before {
+            apply()
+        }
     }
 
     // MARK: - Events

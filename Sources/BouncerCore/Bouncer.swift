@@ -14,6 +14,16 @@ public enum Event: Sendable, Equatable {
     /// Widths in points of every attached display, in any order. Sent at launch and
     /// whenever the screen configuration changes.
     case displayWidthsChanged([Double])
+    /// Time has moved on; Bouncer reads how far from its clock. The app sends this from
+    /// a polling loop.
+    case timePassed
+    /// The pointer moved onto the menu bar, or into the band just below it where a
+    /// Menu Bar Item's menu opens, on whichever display it is on.
+    case pointerEnteredMenuBarZone
+    /// The pointer moved out of that zone.
+    case pointerLeftMenuBarZone
+    /// The user picked a new Auto-collapse timeout. It applies from the next countdown.
+    case autoCollapseTimeoutChanged(AutoCollapseTimeout)
 }
 
 /// How the menu bar should look. The AppKit layer applies this verbatim.
@@ -30,8 +40,12 @@ public struct MenuBarLook: Sendable, Equatable {
 public struct Bouncer: Sendable {
     private var state: HiddenSectionState = .revealed
     private var displays: DividerSizing?
+    private let clock: any BouncerClock
+    private var autoCollapse = AutoCollapseCountdown()
 
-    public init() {}
+    public init(clock: any BouncerClock = SystemClock()) {
+        self.clock = clock
+    }
 
     public var look: MenuBarLook {
         let sizing = displays ?? .none
@@ -51,6 +65,11 @@ public struct Bouncer: Sendable {
             state = .collapsed
         case .toggleClicked:
             state = state == .revealed ? .collapsed : .revealed
+            if state == .revealed {
+                autoCollapse.arm(now: clock.now)
+            } else {
+                autoCollapse.disarm()
+            }
         case .displayWidthsChanged(let widths):
             // Mid-reconfiguration and around sleep, the system can briefly report no
             // screens. Keeping the last real sizing stops a Collapsed Hidden Section
@@ -58,6 +77,16 @@ public struct Bouncer: Sendable {
             if let sizing = DividerSizing(displayWidths: widths) {
                 displays = sizing
             }
+        case .timePassed:
+            if state == .revealed, autoCollapse.isDue(now: clock.now) {
+                state = .collapsed
+            }
+        case .pointerEnteredMenuBarZone:
+            autoCollapse.pointerEntered()
+        case .pointerLeftMenuBarZone:
+            autoCollapse.pointerLeft(now: clock.now)
+        case .autoCollapseTimeoutChanged(let timeout):
+            autoCollapse.timeout = timeout
         }
     }
 }
