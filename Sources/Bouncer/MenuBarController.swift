@@ -232,6 +232,9 @@ final class MenuBarController: NSObject {
 
     // MARK: - Events
 
+    /// Events from outside the menu bar each get a named method, like this and
+    /// `prepareForQuit`. `send` stays private so the rest of the app can't feed the core
+    /// events only the menu bar should report, such as launch or a Toggle click.
     func autoCollapseTimeoutChanged(to timeout: AutoCollapseTimeout) {
         send(.autoCollapseTimeoutChanged(timeout))
     }
