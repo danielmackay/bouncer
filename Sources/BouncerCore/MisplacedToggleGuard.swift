@@ -14,4 +14,7 @@ struct MisplacedToggleGuard: Sendable, Equatable {
     /// Collapsing with the Toggle in the Hidden Section would push it into the System
     /// Overflow too, leaving no way to Reveal.
     var allowsCollapse: Bool { toggleSection == .shown }
+
+    /// Explains why collapsing isn't working, for as long as it isn't.
+    var showsWarning: Bool { toggleSection == .hidden }
 }

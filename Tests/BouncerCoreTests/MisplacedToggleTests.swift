@@ -26,4 +26,23 @@ struct MisplacedToggleTests {
 
         #expect(bouncer.look.state == .revealed)
     }
+
+    @Test("no warning while the Toggle is in the Shown Section")
+    func noWarningWhenShown() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+
+        bouncer.handle(.toggleSectionObserved(.shown))
+
+        #expect(!bouncer.look.showsToggleWarning)
+    }
+
+    @Test("the Toggle warns while it's in the Hidden Section")
+    func warnsWhenHidden() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+        bouncer.handle(.toggleClicked)
+
+        bouncer.handle(.toggleSectionObserved(.hidden))
+
+        #expect(bouncer.look.showsToggleWarning)
+    }
 }

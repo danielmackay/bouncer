@@ -27,6 +27,8 @@ public struct MenuBarLook: Sendable, Equatable {
     public var dividerSegmentLengths: [Double]
     /// Whether the visible Divider draws its thin line.
     public var isDividerLineVisible: Bool
+    /// Whether the Toggle shows its warning icon because it sits in the Hidden Section.
+    public var showsToggleWarning: Bool
 }
 
 /// Bouncer's decisions: feed it events, read back the look.
@@ -45,7 +47,8 @@ public struct Bouncer: Sendable {
                 repeating: state == .collapsed ? sizing.segmentLength : 0,
                 count: sizing.segmentCount
             ),
-            isDividerLineVisible: state == .revealed
+            isDividerLineVisible: state == .revealed,
+            showsToggleWarning: toggleGuard.showsWarning
         )
     }
 
