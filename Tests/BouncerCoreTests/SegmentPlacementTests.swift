@@ -102,6 +102,63 @@ struct SegmentPlacementTests {
         #expect(bouncer.look.toggleIcon == .warning)
     }
 
+    @Test("a reading taken while Collapsed is ignored, since widened segments shift each other")
+    func collapsedReadingIgnored() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+        #expect(bouncer.look.state == .collapsed)
+
+        // Widened segments push the rest far apart; that says nothing about placement.
+        let widened = (1...16).map { Self.dividerX - 760 * Double($0) }
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: widened))
+        bouncer.handle(.toggleClicked)
+        bouncer.handle(.toggleClicked)
+
+        #expect(bouncer.look.state == .collapsed)
+        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752] + Array(repeating: 0, count: 13))
+    }
+
+    @Test("the last Revealed reading still applies after a Collapsed one is ignored")
+    func collapsedReadingKeepsLast() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        let xs = [1730.0] + (1...15).map(Self.runX)
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: xs))
+        bouncer.handle(.launchFinished)
+
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: (1...16).map(Self.runX)))
+
+        #expect(bouncer.look.dividerSegmentLengths == [0, 752, 752, 752] + Array(repeating: 0, count: 12))
+    }
+
+    @Test("once the segments are back in the run, they carry the width again")
+    func repairAfterLayoutChanges() {
+        var bouncer = Bouncer()
+        bouncer.handle(.displayWidthsChanged([1512]))
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: Self.onlyTwoInPlace))
+        bouncer.handle(.launchFinished)
+        #expect(bouncer.look.state == .revealed)
+
+        // The user ⌘-drags the stray item out from between the segments.
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: (1...16).map(Self.runX)))
+        bouncer.handle(.toggleClicked)
+
+        #expect(bouncer.look.state == .collapsed)
+        #expect(bouncer.look.toggleIcon == .collapsed)
+        #expect(bouncer.look.dividerSegmentLengths == [752, 752, 752] + Array(repeating: 0, count: 13))
+    }
+
+    @Test("a later layout moves which segments carry the width")
+    func carriersFollowLayout() {
+        var bouncer = Bouncer.launched(displayWidths: [1512])
+        bouncer.handle(.toggleClicked)
+
+        let xs = [1730.0, 1714] + (1...14).map(Self.runX)
+        bouncer.handle(.dividerSegmentsObserved(dividerX: Self.dividerX, segmentXs: xs))
+        bouncer.handle(.toggleClicked)
+
+        #expect(bouncer.look.dividerSegmentLengths == [0, 0, 752, 752, 752] + Array(repeating: 0, count: 11))
+    }
+
     /// Two segments next to the Divider and the other fourteen beyond a 30pt item.
     static let onlyTwoInPlace = (1...2).map(runX) + (3...16).map { runX($0) - 30 }
 }

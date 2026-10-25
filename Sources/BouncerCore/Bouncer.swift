@@ -166,7 +166,11 @@ public struct Bouncer: Sendable {
         case .toggleSectionObserved(let section):
             toggleGuard.toggleSection = section
         case .dividerSegmentsObserved(let dividerX, let segmentXs):
-            placement.observe(dividerX: dividerX, segmentXs: segmentXs)
+            // Positions only show the run while every segment is zero length; widened
+            // ones push each other apart. A Collapsed reading keeps the last Revealed one.
+            if state == .revealed {
+                placement.observe(dividerX: dividerX, segmentXs: segmentXs)
+            }
         case .terminating:
             isTerminating = true
             state = .revealed
